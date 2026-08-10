@@ -1,0 +1,114 @@
+package com.btc.TaskManagement.service.impl;
+
+import com.btc.TaskManagement.model.Order;
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.model.User;
+import com.btc.TaskManagement.repository.OrderRepository;
+import com.btc.TaskManagement.repository.OrderRepositoryJPA;
+import com.btc.TaskManagement.repository.ProductRepository;
+import com.btc.TaskManagement.repository.UserRepository;
+import com.btc.TaskManagement.service.OrderService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@Service
+public class OrderServiceImpl implements OrderService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private OrderRepositoryJPA orderRepository;
+
+    public OrderServiceImpl(OrderRepository orderRepository) {
+        
+    }
+
+    @Override
+    @Transactional
+    public void processCartOrder(int userId, List<Integer> sepetUrunleri, double sepetToplamTutar, Map<Integer, Double> urunFiyatlari) {
+
+        // 1. Kullanıcıyı Bul ve Bakiye Kontrolü (null kontrolü ile)
+        User user = userRepository.findById((long) userId);
+        if (user == null) {
+            throw new RuntimeException("Kullanıcı bulunamadı ID: " + userId);
+        }
+
+        BigDecimal toplamTutarBD = BigDecimal.valueOf(sepetToplamTutar);
+
+        if (user.getBalance() != null && user.getBalance().compareTo(toplamTutarBD) < 0) {
+            throw new RuntimeException("Yetersiz bakiye! Bakiyeniz: " + user.getBalance() + " TL, Gerekli: " + sepetToplamTutar + " TL");
+        }
+
+        // 2. Sepetteki Ürün Adetlerini Hesapla
+        Map<Integer, Integer> urunAdetMap = new HashMap<>();
+        if (sepetUrunleri != null) {
+            for (Integer urunId : sepetUrunleri) {
+                urunAdetMap.put(urunId, urunAdetMap.getOrDefault(urunId, 0) + 1);
+            }
+        }
+
+        // 3. Stok Kontrolü ve Düşümü
+        for (Map.Entry<Integer, Integer> entry : urunAdetMap.entrySet()) {
+            Long productId = entry.getKey().longValue();
+            Integer talepEdilenAdet = entry.getValue();
+
+            Optional<Product> product = productRepository.findById(productId);
+            if (product.isEmpty()) {
+                throw new RuntimeException("Ürün bulunamadı ID: " + productId);
+            }
+
+            if (product.get().getStock() < talepEdilenAdet) {
+                throw new RuntimeException(product.get().getName() + " ürünü için yetersiz stok! Stok: " + product.get().getStock());
+            }
+
+            product.get().setStock(product.get().getStock() - talepEdilenAdet);
+            productRepository.save(product.orElse(null));
+        }
+
+        // 4. Bakiyeden Düşüş
+        if (user.getBalance() != null) {
+            user.setBalance(user.getBalance().subtract(toplamTutarBD));
+            userRepository.save(user);
+        }
+
+        // 5. Siparişi Kaydet
+        Order order = new Order();
+        order.setUser(user);
+        order.setTotalPrice(toplamTutarBD);
+        order.setStatus("HAZIRLANIYOR");
+
+        orderRepository.save(order);
+    }
+
+    @Override
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
+    }
+
+    @Override
+    public List<Order> getOrdersByUserId(Long userId) {
+        return orderRepository.findByUser_Id(userId);
+    }
+
+    @Override
+    @Transactional
+    public void updateOrderStatus(Long orderId, String status) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            throw new RuntimeException("Sipariş bulunamadı ID: " + orderId);
+        }
+        order.setStatus(status);
+        orderRepository.save(order);
+    }
+}
