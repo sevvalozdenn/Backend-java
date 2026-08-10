@@ -1,0 +1,13 @@
+package com.btc.TaskManagement.repository;
+
+import com.btc.TaskManagement.model.Category;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface CategoryRepositoryJPA extends JpaRepository<Category, Integer> {
+    @Query("Select c from Category c where c.name = :name")
+    Category findByNameIgnoreCase(@Param("name") String name);
+}
