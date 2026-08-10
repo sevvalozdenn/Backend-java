@@ -1,0 +1,207 @@
+package com.btc.TaskManagement.service.impl;
+
+import com.btc.TaskManagement.model.User;
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.repository.ProductRepositoryJPA;
+import com.btc.TaskManagement.repository.UserRepository;
+import com.btc.TaskManagement.repository.UserRepositoryJPA;
+import com.btc.TaskManagement.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+@Transactional // Veritabanı UPDATE ve INSERT işlemlerinin SQL'e kalıcı yazılmasını sağlar
+public class UserServiceImpl implements UserService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserRepositoryJPA userRepositoryJPA;
+
+    @Autowired
+    private ProductRepositoryJPA productRepository;
+
+    public UserServiceImpl() {
+    }
+
+    @Autowired
+    public UserServiceImpl(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @Override
+    public User getUserById(Long id) {
+        if (userRepositoryJPA != null) {
+            return userRepositoryJPA.findById(id).orElse(null);
+        }
+        return userRepository != null ? userRepository.findById(id) : null;
+    }
+
+    @Override
+    public User getUserByUsername(String userName) {
+        if (userName == null) return null;
+
+        System.out.println(">>> UserServiceImpl: Veritabanında kullanıcı aranıyor -> " + userName);
+
+        User user = null;
+
+        if (userRepositoryJPA != null) {
+            try {
+                user = userRepositoryJPA.findByUsername(userName);
+            } catch (Exception e) {
+                System.out.println(">>> UserRepositoryJPA.findByUsername hatası: " + e.getMessage());
+            }
+        }
+
+        if (user == null && userRepository != null) {
+            try {
+                user = userRepository.findByUsername(userName);
+            } catch (Exception e) {
+                System.out.println(">>> UserRepository.findByUsername hatası: " + e.getMessage());
+            }
+        }
+
+        return user;
+    }
+
+    /* --- TÜM KULLANICILARI ÇEKEN GÜNCELLENMİŞ METOD --- */
+    @Override
+    public List<User> getAllUsers() {
+        if (userRepositoryJPA != null) {
+            return userRepositoryJPA.findAll(); // JPA ile veritabanındaki TÜM kullanıcıları çeker
+        }
+        if (userRepository != null) {
+            return userRepository.findAll(); // JDBC repository varsa oradan çeker
+        }
+        return new ArrayList<>();
+    }
+
+    /* --- KULLANICI EKLENMESİNİ VE KAYDINI SAĞLAYAN GÜNCELLENMİŞ METOD --- */
+    @Override
+    public User saveUser(User user) {
+        if (user == null) return null;
+
+        // Veritabanında 'name' alanı nullable=false olduğu için boşsa dolduruyoruz
+        if (user.getName() == null || user.getName().trim().isEmpty()) {
+            user.setName(user.getUsername());
+        }
+
+        if (userRepositoryJPA != null) {
+            User saved = userRepositoryJPA.save(user);
+            System.out.println(">>> JPA Kullanıcı veritabanına kaydedildi: " + saved.getUsername());
+            return saved;
+        } else if (userRepository != null) {
+            userRepository.save(user);
+            return user;
+        }
+        return null;
+    }
+
+    /* --- KULLANICI SİLİNMESİNİ SAĞLAYAN GÜNCELLENMİŞ METOD --- */
+    @Override
+    public void deleteUser(Long id) {
+        if (id == null) return;
+
+        if (userRepositoryJPA != null) {
+            userRepositoryJPA.deleteById(id);
+            System.out.println(">>> JPA Kullanıcı silindi ID: " + id);
+        } else if (userRepository != null) {
+            userRepository.deleteById(id);
+            System.out.println(">>> JDBC Kullanıcı silindi ID: " + id);
+        }
+    }
+
+    /* --- NOT-NULL VE BAKIYE GÜNCELLEME METODU --- */
+    @Override
+    public void updateUser(User user) {
+        if (user == null) return;
+
+        User dbUser = null;
+
+        if (user.getId() != null) {
+            dbUser = getUserById(user.getId());
+        }
+        if (dbUser == null && user.getUsername() != null) {
+            dbUser = getUserByUsername(user.getUsername());
+        }
+
+        if (dbUser != null) {
+            // Var olan bilgileri koruyup güncelliyoruz
+            if (user.getBalance() != null) dbUser.setBalance(user.getBalance());
+            if (user.getUsername() != null && !user.getUsername().isEmpty()) dbUser.setUsername(user.getUsername());
+            if (user.getName() != null && !user.getName().isEmpty()) dbUser.setName(user.getName());
+            if (user.getPassword() != null && !user.getPassword().isEmpty()) dbUser.setPassword(user.getPassword());
+
+            if (userRepositoryJPA != null) {
+                userRepositoryJPA.save(dbUser);
+                System.out.println(">>> JPA kullanıcı veritabanında güncellendi: " + dbUser.getUsername());
+            } else if (userRepository != null && dbUser.getId() != null) {
+                userRepository.updateBalance(dbUser.getId(), dbUser.getBalance());
+            }
+        } else {
+            saveUser(user);
+        }
+    }
+
+    @Override
+    public void updateBalance(Long id, BigDecimal balance) {
+        if (id == null) return;
+
+        if (userRepositoryJPA != null) {
+            User user = userRepositoryJPA.findById(id).orElse(null);
+            if (user != null) {
+                user.setBalance(balance);
+                userRepositoryJPA.save(user);
+                System.out.println(">>> JPA updateBalance çalıştı: " + balance);
+            }
+        } else if (userRepository != null) {
+            userRepository.updateBalance(id, balance);
+            System.out.println(">>> JDBC updateBalance çalıştı: " + balance);
+        }
+    }
+
+    @Override
+    public boolean buyProduct(Long userId, Long productId) {
+        User user = getUserById(userId);
+        Optional<Product> productOpt = productRepository != null ? productRepository.findById(Math.toIntExact(productId)) : Optional.empty();
+
+        if (user != null && productOpt.isPresent()) {
+            Product product = productOpt.get();
+            BigDecimal currentBalance = user.getBalance();
+            BigDecimal productPrice = BigDecimal.valueOf(product.getPrice());
+
+            if (currentBalance == null) {
+                currentBalance = BigDecimal.ZERO;
+            }
+
+            if (currentBalance.compareTo(productPrice) >= 0) {
+                BigDecimal newBalance = currentBalance.subtract(productPrice);
+                user.setBalance(newBalance);
+
+                if (userRepositoryJPA != null) {
+                    userRepositoryJPA.save(user);
+                } else if (userRepository != null) {
+                    userRepository.updateBalance(userId, newBalance);
+                }
+
+                System.out.println("\n✅ Satın alma başarılı!");
+                System.out.println("🛒 Alınan Ürün: " + product.getName());
+                System.out.println("💵 Kalan Bakiye: " + newBalance + " TL");
+                return true;
+            } else {
+                System.out.println("\n❌ Yetersiz bakiye! Mevcut bakiye: " + currentBalance + " TL, Ürün fiyatı: " + productPrice + " TL");
+                return false;
+            }
+        } else {
+            System.out.println("\n❌ Kullanıcı veya Ürün bulunamadı!");
+            return false;
+        }
+    }
+}
