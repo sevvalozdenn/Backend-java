@@ -1,0 +1,284 @@
+package com.btc.TaskManagement.repository.impl;
+
+import com.btc.TaskManagement.model.Category;
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.repository.ProductRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+
+import javax.sql.DataSource;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public class ProductRepositoryImpl implements ProductRepository {
+
+    @Autowired(required = false)
+    private DataSource dataSource;
+
+    private Connection conn;
+
+    public ProductRepositoryImpl() {}
+
+    @Autowired
+    public ProductRepositoryImpl(Connection conn) {
+        this.conn = conn;
+    }
+
+    private Connection getConnection() throws SQLException {
+        if (this.conn != null && !this.conn.isClosed()) {
+            return this.conn;
+        }
+        if (dataSource != null) {
+            return dataSource.getConnection();
+        }
+        throw new SQLException("Veritabanı bağlantısı sağlanamadı!");
+    }
+
+    // 1. TÜM ÜRÜNLERİ GETİR (Her iki tabloyu da sırayla dener)
+    @Override
+    public List<Product> getAllProducts() {
+        List<Product> products = new ArrayList<>();
+
+        // Önce 'urunler' tablosunu dener
+        if (getProductsFromTable("urunler", products)) {
+            System.out.println(">>> 'urunler' tablosundan çekilen ürün sayısı: " + products.size());
+            return products;
+        }
+
+        // 'urunler' tablosu yoksa veya hata verdiyse 'products' tablosunu dener
+        if (getProductsFromTable("products", products)) {
+            System.out.println(">>> 'products' tablosundan çekilen ürün sayısı: " + products.size());
+            return products;
+        }
+
+        return products;
+    }
+
+    private boolean getProductsFromTable(String tableName, List<Product> list) {
+        String sql = "SELECT id, name, price, stock FROM " + tableName + " ORDER BY id ASC";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                Product p = new Product();
+                p.setId((long) rs.getInt("id"));
+                p.setName(rs.getString("name"));
+                p.setPrice(rs.getDouble("price"));
+                p.setStock(rs.getInt("stock"));
+
+                Category c = new Category();
+                c.setName("yiyecek");
+                p.setCategory(c);
+
+                list.add(p);
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // 2. YENİ ÜRÜN EKLE
+    @Override
+    public boolean addProduct(Product product) {
+        String sql = "INSERT INTO urunler (name, price, stock) VALUES (?, ?, ?)";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            stmt.setString(1, product.getName());
+            stmt.setDouble(2, product.getPrice());
+            stmt.setInt(3, product.getStock() > 0 ? product.getStock() : 100);
+
+            int rows = stmt.executeUpdate();
+            if (rows > 0) {
+                System.out.println(">>> Ürün 'urunler' tablosuna eklendi: " + product.getName());
+                return true;
+            }
+        } catch (Exception e) {
+            System.out.println(">>> 'urunler' tablosuna ekleme hatası, 'products' deneniyor: " + e.getMessage());
+            try {
+                String backupSql = "INSERT INTO products (name, price, stock) VALUES (?, ?, ?)";
+                try (Connection connection = getConnection();
+                     PreparedStatement stmt = connection.prepareStatement(backupSql)) {
+                    stmt.setString(1, product.getName());
+                    stmt.setDouble(2, product.getPrice());
+                    stmt.setInt(3, product.getStock() > 0 ? product.getStock() : 100);
+
+                    int rows = stmt.executeUpdate();
+                    if (rows > 0) {
+                        System.out.println(">>> Ürün 'products' tablosuna eklendi: " + product.getName());
+                        return true;
+                    }
+                }
+            } catch (Exception ex) {
+                System.out.println(">>> 'products' tablosuna da eklenemedi: " + ex.getMessage());
+            }
+        }
+        return false;
+    }
+
+    // 3. ÜRÜN GÜNCELLE
+    @Override
+    public boolean updateProduct(Product product) {
+        if (executeUpdateQuery("UPDATE urunler SET name = ?, price = ?, stock = ? WHERE id = ?", product)) {
+            return true;
+        }
+        return executeUpdateQuery("UPDATE products SET name = ?, price = ?, stock = ? WHERE id = ?", product);
+    }
+
+    private boolean executeUpdateQuery(String sql, Product product) {
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            stmt.setString(1, product.getName());
+            stmt.setDouble(2, product.getPrice());
+            stmt.setInt(3, product.getStock());
+            stmt.setInt(4, Math.toIntExact(product.getId()));
+
+            return stmt.executeUpdate() > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // 4. ÜRÜN SİL
+    @Override
+    public boolean deleteProduct(int id) throws SQLException {
+        String sqlUrunler = "DELETE FROM urunler WHERE id = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sqlUrunler)) {
+
+            stmt.setInt(1, id);
+            int rows = stmt.executeUpdate();
+            if (rows > 0) {
+                System.out.println(">>> Ürün 'urunler' tablosundan silindi ID: " + id);
+                return true;
+            }
+        } catch (Exception ignored) {}
+
+        String sqlProducts = "DELETE FROM products WHERE id = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sqlProducts)) {
+
+            stmt.setInt(1, id);
+            int rows = stmt.executeUpdate();
+            if (rows > 0) {
+                System.out.println(">>> Ürün 'products' tablosundan silindi ID: " + id);
+                return true;
+            }
+        } catch (Exception e) {
+            System.out.println(">>> Ürün silme hatası: " + e.getMessage());
+            throw e;
+        }
+
+        return false;
+    }
+
+    // 5. ÜRÜN SATIN AL / STOK DÜŞÜR
+    @Override
+    public boolean buyProduct(int id, int quantity) {
+        String sql = "UPDATE urunler SET stock = stock - ? WHERE id = ? AND stock >= ?";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            stmt.setInt(1, quantity);
+            stmt.setInt(2, id);
+            stmt.setInt(3, quantity);
+
+            if (stmt.executeUpdate() > 0) return true;
+        } catch (Exception ignored) {}
+
+        String backupSql = "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(backupSql)) {
+
+            stmt.setInt(1, quantity);
+            stmt.setInt(2, id);
+            stmt.setInt(3, quantity);
+
+            return stmt.executeUpdate() > 0;
+        } catch (Exception e) {
+            System.out.println(">>> Stok düşürme hatası: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void save(Product product) {
+        addProduct(product);
+    }
+
+    @Override
+    public Product getProductById(int id) {
+        Product p = fetchSingleProduct("SELECT id, name, price, stock FROM urunler WHERE id = ?", id);
+        if (p != null) return p;
+        return fetchSingleProduct("SELECT id, name, price, stock FROM products WHERE id = ?", id);
+    }
+
+    private Product fetchSingleProduct(String sql, int id) {
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Product p = new Product();
+                    p.setId((long) rs.getInt("id"));
+                    p.setName(rs.getString("name"));
+                    p.setPrice(rs.getDouble("price"));
+                    p.setStock(rs.getInt("stock"));
+                    return p;
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    @Override
+    public void updateStock(int id, int newStock) {
+        yeniStock(newStock, id);
+    }
+
+    @Override
+    public void yeniStock(int newStock, int id) {
+        String sql = "UPDATE urunler SET stock = ? WHERE id = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            stmt.setInt(1, newStock);
+            stmt.setInt(2, id);
+            if (stmt.executeUpdate() > 0) return;
+        } catch (Exception ignored) {}
+
+        String backupSql = "UPDATE products SET stock = ? WHERE id = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement stmt = connection.prepareStatement(backupSql)) {
+
+            stmt.setInt(1, newStock);
+            stmt.setInt(2, id);
+            stmt.executeUpdate();
+        } catch (Exception e) {
+            System.out.println(">>> Stock güncelleme hatası: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Optional<Product> findById(Long productId) {
+        if (productId == null) return Optional.empty();
+        Product p = getProductById(Math.toIntExact(productId));
+        return Optional.ofNullable(p);
+    }
+
+    @Override
+    public Double getPriceByProductId(int id) {
+        Product p = getProductById(id);
+        return p != null ? p.getPrice() : null;
+    }
+
+    @Override
+    public void veritabaniniHazirla() {}
+}
