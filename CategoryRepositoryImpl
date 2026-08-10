@@ -1,0 +1,151 @@
+package com.btc.TaskManagement.repository.impl;
+
+import com.btc.TaskManagement.repository.CategoryRepository;
+import com.btc.TaskManagement.model.Category;
+import org.springframework.stereotype.Repository;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public class CategoryRepositoryImpl implements CategoryRepository {
+
+    private Connection conn;
+
+    // Veritabanı bağlantısı null gelmesin diye constructor/bağlantı kontrolü
+    public CategoryRepositoryImpl(Connection conn) {
+        this.conn = conn;
+    }
+
+    // Spring için varsayılan constructor (Eğer bağlantıyı başka bir yerden alıyorsan)
+    public CategoryRepositoryImpl() {}
+
+    @Override
+    public List<Category> getAllCategories() throws SQLException {
+        List<Category> categories = new ArrayList<>();
+        String sql = "SELECT id, name FROM category ORDER BY id ASC";
+
+        if (conn == null) return categories;
+
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                Category c = new Category();
+                c.setId(rs.getInt("id"));
+                c.setName(rs.getString("name"));
+                categories.add(c);
+            }
+        }
+        return categories;
+    }
+
+    @Override
+    public Category getCategoryById(int id) throws SQLException {
+        String sql = "SELECT id, name FROM category WHERE id = ?";
+        if (conn == null) return null;
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Category c = new Category();
+                    c.setId(rs.getInt("id"));
+                    c.setName(rs.getString("name"));
+                    return c;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public Category getCategoryByName(String name) throws SQLException {
+        Optional<Category> opt = findByNameIgnoreCase(name);
+        return opt.orElse(null);
+    }
+
+    @Override
+    public boolean addCategory(Category category) {
+        String sql = "INSERT INTO category (name) VALUES (?)";
+        if (conn == null) return false;
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, category.getName());
+            int affectedRows = stmt.executeUpdate();
+
+            if (affectedRows > 0) {
+                // Oluşan yeni ID'yi kategoriye set ediyoruz
+                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        category.setId(generatedKeys.getInt(1));
+                    }
+                }
+                return true;
+            }
+        } catch (SQLException e) {
+            System.out.println(">>> Kategori eklenirken hata oluştu: " + e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean updateCategory(Category category) {
+        String sql = "UPDATE category SET name = ? WHERE id = ?";
+        if (conn == null) return false;
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, category.getName());
+            stmt.setInt(2, category.getId());
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.out.println(">>> Kategori güncellenirken hata oluştu: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean deleteCategory(int id) throws SQLException {
+        String sql = "DELETE FROM category WHERE id = ?";
+        if (conn == null) return false;
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    // İŞTE ÜRÜN EKLENİRKEN ÇALIŞACAK KISIM (SQL İLE BÜYÜK/KÜÇÜK HARF DUYARSIZ ARAMA)
+    @Override
+    public Optional<Category> findByNameIgnoreCase(String categoryStr) {
+        if (conn == null || categoryStr == null || categoryStr.trim().isEmpty()) {
+            return Optional.empty();
+        }
+
+        String sql = "SELECT id, name FROM category WHERE LOWER(name) = LOWER(?)";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, categoryStr.trim());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Category c = new Category();
+                    c.setId(rs.getInt("id"));
+                    c.setName(rs.getString("name"));
+                    return Optional.of(c);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(">>> Kategori arama hatasi: " + e.getMessage());
+        }
+
+        return Optional.empty();
+    }
+
+    @Override
+    public Category save(Category newCat) {
+        Category o = null;
+        return o;
+    }
+}
