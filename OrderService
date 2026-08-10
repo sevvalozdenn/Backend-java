@@ -1,0 +1,19 @@
+package com.btc.TaskManagement.service;
+
+import com.btc.TaskManagement.model.Order;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+
+public interface OrderService {
+
+    @Transactional
+    void processCartOrder(int userId, List<Integer> sepetUrunleri, double sepetToplamTutar, Map<Integer, Double> urunFiyatlari);
+
+    List getAllOrders();
+
+    List getOrdersByUserId(Long userId);
+
+    void updateOrderStatus(Long orderId, String status);
+}
