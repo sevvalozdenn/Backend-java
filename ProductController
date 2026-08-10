@@ -1,0 +1,128 @@
+package com.btc.TaskManagement.controller;
+
+import com.btc.TaskManagement.model.Category;
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.repository.CategoryRepositoryJPA;
+import com.btc.TaskManagement.repository.ProductRepository;
+import com.btc.TaskManagement.repository.ProductRepositoryJPA;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping({"/product", "/api/products"})
+@CrossOrigin(origins = "*")
+public class ProductController {
+
+    @Autowired
+    private ProductRepositoryJPA productRepository;
+
+    @Autowired
+    private CategoryRepositoryJPA categoryRepository;
+
+    // TÜM ÜRÜNLERİ LİSTELE
+    @GetMapping
+    public ResponseEntity<List<Product>> getAllProducts() {
+        try {
+            if (productRepository == null) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(List.of());
+            }
+            List<Product> products = productRepository.findAll();
+            return ResponseEntity.ok(products != null ? products : List.of());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(List.of());
+        }
+    }
+
+    // YENİ ÜRÜN EKLE
+    @PostMapping({"/add", ""})
+    public ResponseEntity<?> addProduct(@RequestBody Map<String, Object> payload) {
+        try {
+            if (payload == null || !payload.containsKey("name")) {
+                return ResponseEntity.badRequest().body("Ürün adı zorunludur!");
+            }
+
+            String name = payload.get("name").toString().trim();
+            double price = payload.get("price") != null ? Double.parseDouble(payload.get("price").toString()) : 0.0;
+            int stock = payload.get("stock") != null ? Integer.parseInt(payload.get("stock").toString()) : 100;
+
+            if (name.isEmpty()) {
+                return ResponseEntity.badRequest().body("Ürün adı boş olamaz!");
+            }
+
+            Product product = new Product();
+            product.setName(name);
+            product.setPrice(price);
+            product.setStock(stock);
+
+            // Veritabanı NULL hatası vermesin diye Varsayılan Kategori Ataması
+            Category category = new Category();
+            category.setId(1);
+            System.out.println("aaaaa");
+            System.out.println(payload.get("category"));
+            if (payload.containsKey("category") && payload.get("category") != null) {
+                String catObj = (String) payload.get("category");
+                category = categoryRepository.findByNameIgnoreCase(catObj);
+                System.out.println(catObj);
+                System.out.println(category.getId());
+            }
+            product.setCategory(category);
+
+            Product success = productRepository.save(product);
+
+            if (success != null) {
+                return ResponseEntity.ok(product);
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Veritabanına eklenemedi. SQL veya Repository katmanını kontrol edin.");
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Hata: " + e.getMessage());
+        }
+    }
+
+    // ÜRÜN GÜNCELLE
+    @PutMapping({"/update", "/{id}"})
+    public ResponseEntity<?> updateProduct(@RequestBody Map<String, Object> payload) {
+        try {
+            if (payload == null || !payload.containsKey("id")) {
+                return ResponseEntity.badRequest().body("Güncelleme için ürün ID bilgisi zorunludur!");
+            }
+
+            int id = Integer.parseInt(payload.get("id").toString());
+            String name = payload.get("name") != null ? payload.get("name").toString().trim() : "";
+            double price = payload.get("price") != null ? Double.parseDouble(payload.get("price").toString()) : 0.0;
+            int stock = payload.get("stock") != null ? Integer.parseInt(payload.get("stock").toString()) : 0;
+
+            Product product = new Product();
+            product.setId((long) id);
+            product.setName(name);
+            product.setPrice(price);
+            product.setStock(stock);
+
+            Category category = new Category();
+            category.setId(1);
+            product.setCategory(category);
+
+            Product success = productRepository.save(product);
+            return ResponseEntity.ok("Güncellendi");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Hata: " + e.getMessage());
+        }
+    }
+
+    // ÜRÜN SİL
+    @DeleteMapping({"/delete/{id}", "/{id}"})
+    public ResponseEntity<?> deleteProduct(@PathVariable int id) {
+        try {
+            productRepository.deleteById(id);
+            return ResponseEntity.ok("Silindi");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Silinemedi: " + e.getMessage());
+        }
+    }
+}
