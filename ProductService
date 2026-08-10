@@ -1,0 +1,30 @@
+package com.btc.TaskManagement.service;
+
+import com.btc.TaskManagement.model.Product;
+import java.sql.SQLException;
+import java.util.List;
+
+public interface ProductService {
+
+    boolean addProduct(Product product);
+
+    boolean updateProduct(Product product);
+
+    void deleteProduct(int id);
+
+    void veritabaniniHazirla();
+
+    List<Product> getAllProducts() throws SQLException;
+
+    Product getProductById(int id) throws SQLException;
+
+    void yeniStock(int id, int newStock) throws SQLException;
+
+    int purchaseProduct(int productId, int money, int secilenUrun) throws Exception;
+
+    // Tek bir yerde ve en altta durması gereken yeni metodumuz:
+    void tatliUrunleriniVeKategorisiniOlustur() throws SQLException;
+    List<Product> findProductsByCategoryName(String categoryName);
+
+    Double getPriceByProductId(int id);
+}
