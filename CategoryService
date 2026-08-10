@@ -1,0 +1,20 @@
+
+package com.btc.TaskManagement.service;
+
+import com.btc.TaskManagement.model.Category;
+import java.util.List;
+
+public interface CategoryService {
+
+    List<Category> getAllCategories();
+
+    Category getCategoryById(int id);
+
+    Category getCategoryByName(String name);
+
+    boolean addCategory(Category category);
+
+    boolean updateCategory(Category category);
+
+    boolean deleteCategory(int id);
+}
