@@ -1,0 +1,18 @@
+package com.btc.TaskManagement.repository;
+
+import com.btc.TaskManagement.model.User;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+public interface UserRepository {
+    User findById(Long id);
+    User findByUsername(String name);
+    void updateBalance(Long id, BigDecimal balance);
+
+    List<User> findAll();
+
+    void save(User user);
+
+    void deleteById(Long id);
+}
