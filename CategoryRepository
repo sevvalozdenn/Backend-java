@@ -1,0 +1,27 @@
+package com.btc.TaskManagement.repository;
+
+import com.btc.TaskManagement.model.Category;
+
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
+
+public interface CategoryRepository {
+
+    List<Category> getAllCategories() throws SQLException;
+
+    Category getCategoryById(int id) throws SQLException;
+
+    Category getCategoryByName(String name) throws SQLException;
+
+    boolean addCategory(Category category) throws SQLException;
+
+    boolean updateCategory(Category category) throws SQLException;
+
+    boolean deleteCategory(int id) throws SQLException;
+
+
+    Optional<Category> findByNameIgnoreCase(String categoryStr);
+
+    Category save(Category newCat);
+}
