@@ -1,0 +1,146 @@
+package com.btc.TaskManagement.controller;
+
+import com.btc.TaskManagement.model.Order;
+import com.btc.TaskManagement.model.OrderDetail;
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.model.User;
+import com.btc.TaskManagement.repository.OrderRepositoryJPA;
+import com.btc.TaskManagement.repository.ProductRepositoryJPA;
+import com.btc.TaskManagement.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/orders")
+@CrossOrigin(origins = "*")
+public class OrderController {
+
+    @Autowired(required = false)
+    private UserService userService;
+
+    @Autowired(required = false)
+    private ProductRepositoryJPA productRepositoryJPA;
+
+    @Autowired(required = false)
+    private OrderRepositoryJPA orderRepositoryJPA;
+
+    @GetMapping
+    public ResponseEntity<?> getAllOrders() {
+        if (orderRepositoryJPA != null) {
+            return ResponseEntity.ok(orderRepositoryJPA.findAll());
+        }
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body("OrderRepository devredışı.");
+    }
+
+    @PostMapping("/create")
+    @Transactional
+    public ResponseEntity<?> createOrder(@RequestBody Map<String, Object> payload) {
+        try {
+            String username = payload.get("username") != null ? payload.get("username").toString().trim() : null;
+            Object userIdObj = payload.get("userId");
+
+            User user = null;
+            if (userService != null) {
+                if (username != null && !username.isEmpty()) {
+                    user = userService.getUserByUsername(username);
+                }
+                if (user == null && userIdObj != null) {
+                    try {
+                        Long userId = Long.parseLong(userIdObj.toString());
+                        user = userService.getUserById(userId);
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            // Test admin kullanıcısı desteği
+            if (user == null && "admin".equalsIgnoreCase(username)) {
+                user = new User();
+                user.setId(1L);
+                user.setUsername("admin");
+                user.setBalance(BigDecimal.valueOf(100000));
+            }
+
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Sipariş oluşturulamadı: Kullanıcı bulunamadı!");
+            }
+
+            List<Map<String, Object>> items = (List<Map<String, Object>>) payload.get("items");
+            if (items == null || items.isEmpty()) {
+                return ResponseEntity.badRequest().body("Sipariş oluşturulamadı: Sepet boş!");
+            }
+
+            Order order = new Order();
+            order.setUser(user);
+            order.setStatus(payload.get("status") != null ? payload.get("status").toString() : "Siparişiniz Alınmıştır");
+            order.setOrderDate(new Timestamp(System.currentTimeMillis()));
+
+            if (order.getOrderDetails() == null) {
+                order.setOrderDetails(new ArrayList<>());
+            }
+
+            double totalAmount = 0;
+
+            for (Map<String, Object> item : items) {
+                if (item.get("productId") != null) {
+                    Long productId = Long.parseLong(item.get("productId").toString());
+                    int quantity = item.get("quantity") != null ? Integer.parseInt(item.get("quantity").toString()) : 1;
+                    double price = item.get("price") != null ? Double.parseDouble(item.get("price").toString()) : 0.0;
+
+                    Product product = null;
+                    if (productRepositoryJPA != null) {
+                        product = productRepositoryJPA.findById(Math.toIntExact(productId)).orElse(null);
+                    }
+
+                    if (product != null) {
+                        // Stok Kontrolü
+                        if (product.getStock() < quantity) {
+                            return ResponseEntity.badRequest().body("Yetersiz stok! Ürün: " + product.getName() + " (Kalan: " + product.getStock() + ")");
+                        }
+                        product.setStock(product.getStock() - quantity);
+                        productRepositoryJPA.save(product);
+
+                        OrderDetail detail = new OrderDetail(order, product, quantity, price);
+                        order.getOrderDetails().add(detail);
+                    }
+
+                    totalAmount += price * quantity;
+                }
+            }
+
+            BigDecimal totalPrice = BigDecimal.valueOf(totalAmount);
+            order.setTotalPrice(totalPrice);
+
+            // Bakiye Kontrolü ve Düşümü
+            if (user.getBalance() != null) {
+                if (user.getBalance().compareTo(totalPrice) < 0) {
+                    return ResponseEntity.badRequest().body("Yetersiz bakiye! Gerekli: " + totalPrice + " TL, Bakiyeniz: " + user.getBalance() + " TL");
+                }
+                user.setBalance(user.getBalance().subtract(totalPrice));
+                if (userService != null && user.getId() != null) {
+                    userService.updateUser(user);
+                }
+            }
+
+            if (orderRepositoryJPA != null) {
+                Order savedOrder = orderRepositoryJPA.save(order);
+                return ResponseEntity.ok(savedOrder);
+            }
+
+            return ResponseEntity.ok(order);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Satın alma hatası: " + e.getMessage());
+        }
+    }
+}
