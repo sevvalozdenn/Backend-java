@@ -1,0 +1,16 @@
+package com.btc.TaskManagement.dto;
+
+import java.util.List;
+
+public class CreateOrderRequest {
+    private int userId;
+    private List<OrderItemRequest> items;
+
+    public CreateOrderRequest() {}
+
+    public int getUserId() { return userId; }
+    public void setUserId(int userId) { this.userId = userId; }
+
+    public List<OrderItemRequest> getItems() { return items; }
+    public void setItems(List<OrderItemRequest> items) { this.items = items; }
+}
