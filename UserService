@@ -1,0 +1,23 @@
+package com.btc.TaskManagement.service;
+
+import com.btc.TaskManagement.model.User;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+@Service
+public interface UserService {
+
+    // MEVCUT METODLARIN
+    User getUserById(Long id);
+    boolean buyProduct(Long userId, Long productId);
+    void updateBalance(Long id, BigDecimal balance);
+    User getUserByUsername(String userName);
+    void updateUser(User user);
+
+    // KULLANICI YÖNETİMİ (users.html) İÇİN EKLENEN YENİ METODLAR
+    List<User> getAllUsers();          // Tüm kullanıcıları listelemek için
+    User saveUser(User user);          // Yeni kullanıcı kaydetmek/eklemek için
+    void deleteUser(Long id);          // Kullanıcıyı ID'ye göre silmek için
+}
