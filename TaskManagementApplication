@@ -1,0 +1,34 @@
+package com.btc.TaskManagement;
+
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+
+import java.util.Collections;
+
+@SpringBootApplication
+@EnableJpaRepositories
+public class TaskManagementApplication {
+
+	public static void main(String[] args) {
+		SpringApplication app = new SpringApplication(TaskManagementApplication.class);
+
+		// Portu doğrudan kod içerisinde 8081 olarak zorunlu kılıyoruz
+		app.setDefaultProperties(Collections.singletonMap("server.port", "8081"));
+
+		app.run(args);
+	}
+
+	/*
+	 * Konsoldaki Scanner / System.in döngülerinin web sunucusunu
+	 * kilitlenmeye sokmasını engellemek için boş bir runner tanımlıyoruz.
+	 */
+	@Bean
+	public CommandLineRunner stopConsoleRunner() {
+		return args -> {
+			System.out.println(">> Web Sunucusu 8081 Portunda Başarıyla Başlatıldı. API Girişi Bekleniyor...");
+		};
+	}
+}
