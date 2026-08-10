@@ -1,0 +1,120 @@
+package com.btc.TaskManagement.repository.impl;
+
+import com.btc.TaskManagement.model.User;
+import com.btc.TaskManagement.repository.UserRepository;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+import java.sql.*;
+import java.util.List;
+
+@Component
+public class UserRepositoryImpl implements UserRepository {
+
+    private final Connection conn;
+
+    public UserRepositoryImpl(Connection conn) {
+        this.conn = conn;
+    }
+
+    @Override
+    public User findByUsername(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            return null;
+        }
+
+        // LOWER ve TRIM kullanarak harf büyüklüğü ve boşluk hatalarını engelliyoruz
+        String sql = "SELECT u.id, u.name, u.balance, u.username, u.password " +
+                "FROM users u " +
+                "WHERE LOWER(TRIM(u.username)) = LOWER(TRIM(?)) " +
+                "OR LOWER(TRIM(u.name)) = LOWER(TRIM(?))";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            String cleanName = name.trim();
+            stmt.setString(1, cleanName);
+            stmt.setString(2, cleanName);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    User user = new User();
+                    user.setId((long) rs.getInt("id"));
+
+                    // Veritabanından gelen verileri tam atıyoruz
+                    String dbUsername = rs.getString("username");
+                    String dbName = rs.getString("name");
+
+                    user.setName(dbName != null ? dbName : dbUsername);
+                    user.setUsername(dbUsername != null ? dbUsername : dbName);
+
+                    // Şifreyi alırken TRIM yapıyoruz ki veritabanında gizli boşluk kalmasın
+                    String dbPassword = rs.getString("password");
+                    user.setPassword(dbPassword != null ? dbPassword.trim() : null);
+
+                    BigDecimal balance = rs.getBigDecimal("balance");
+                    user.setBalance(balance != null ? balance : BigDecimal.ZERO);
+
+                    return user;
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(">>> findByUsername hatası: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public User findById(Long id) {
+        String sql = "SELECT u.id, u.name, u.username, u.password, u.balance FROM users u WHERE u.id = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    User user = new User();
+                    user.setId((long) rs.getInt("id"));
+                    user.setName(rs.getString("name"));
+                    user.setUsername(rs.getString("username"));
+                    user.setPassword(rs.getString("password"));
+                    user.setBalance(rs.getBigDecimal("balance"));
+                    return user;
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(">>> findById hatası: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public void updateBalance(Long id, BigDecimal balance) {
+        String sql = "UPDATE users SET balance = ? WHERE id = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setBigDecimal(1, balance);
+            stmt.setLong(2, id);
+
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println(">>> updateBalance hatası: " + e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public List<User> findAll() {
+        return List.of();
+    }
+
+    @Override
+    public void save(User user) {
+
+    }
+
+    @Override
+    public void deleteById(Long id) {
+
+    }
+}
