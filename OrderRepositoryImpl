@@ -1,0 +1,129 @@
+package com.btc.TaskManagement.repository.impl;
+
+import com.btc.TaskManagement.model.Order;
+import com.btc.TaskManagement.model.User;
+import com.btc.TaskManagement.repository.OrderRepository;
+import org.springframework.stereotype.Repository;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+@Repository
+public class OrderRepositoryImpl implements OrderRepository {
+
+    private final Connection conn;
+
+    public OrderRepositoryImpl(Connection conn) {
+        this.conn = conn;
+    }
+
+    // 1. Tüm Siparişleri Getir (Admin için)
+    @Override
+    public List<Order> findAll() {
+        List<Order> orders = new ArrayList<>();
+        String sql = "SELECT * FROM orders ORDER BY order_date DESC";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                Order order = new Order();
+                order.setId(rs.getLong("id"));
+                order.setTotalPrice(rs.getBigDecimal("total_price"));
+                order.setStatus(rs.getString("status"));
+                order.setOrderDate(rs.getTimestamp("order_date"));
+
+                User user = new User();
+                user.setId(rs.getLong("user_id"));
+                order.setUser(user);
+
+                orders.add(order);
+            }
+        } catch (SQLException e) {
+            System.out.println(">>> Tüm siparişler getirilirken hata: " + e.getMessage());
+        }
+        return orders;
+    }
+
+    // 2. Sipariş Ana Kaydı Oluştur (Oluşan ID'yi döner)
+    @Override
+    public Long createOrder(Long userId, double totalPrice) {
+        String sql = "INSERT INTO orders (user_id, total_price, status, order_date) VALUES (?, ?, 'Siparişiniz alınmıştır', NOW())";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setLong(1, userId != null ? userId : 0L);
+            stmt.setDouble(2, totalPrice);
+            stmt.executeUpdate();
+
+            try (ResultSet rs = stmt.getGeneratedKeys()) {
+                if (rs.next()) {
+                    return rs.getLong(1);
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(">>> Sipariş oluşturulurken hata: " + e.getMessage());
+        }
+        return null;
+    }
+
+    // 3. Sipariş Detayı Ekle (Her ürün için bir satır)
+    @Override
+    public void createOrderDetail(Long orderId, Long productId, int quantity, double unitPrice) {
+        String sql = "INSERT INTO order_details (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, orderId != null ? orderId : 0L);
+            stmt.setLong(2, productId != null ? productId : 0L);
+            stmt.setInt(3, quantity);
+            stmt.setDouble(4, unitPrice);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println(">>> Sipariş detayı eklenirken hata: " + e.getMessage());
+        }
+    }
+
+    // 4. Kullanıcıya Göre Siparişleri Getir
+    @Override
+    public List<Order> findByUserId(Long userId) {
+        List<Order> orders = new ArrayList<>();
+        String sql = "SELECT * FROM orders WHERE user_id = ? ORDER BY order_date DESC";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Order order = new Order();
+                    order.setId(rs.getLong("id"));
+                    order.setTotalPrice(rs.getBigDecimal("total_price"));
+                    order.setStatus(rs.getString("status"));
+                    order.setOrderDate(rs.getTimestamp("order_date"));
+
+                    User user = new User();
+                    user.setId(rs.getLong("user_id"));
+                    order.setUser(user);
+
+                    orders.add(order);
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(">>> Kullanıcı siparişleri getirilirken hata: " + e.getMessage());
+        }
+        return orders;
+    }
+
+    // 5. Sipariş Durumunu Güncelle
+    @Override
+    public void updateOrderStatus(Long orderId, String status) {
+        String sql = "UPDATE orders SET status = ? WHERE id = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            stmt.setLong(2, orderId);
+            stmt.executeUpdate();
+            System.out.println(">>> Veritabanında Sipariş ID " + orderId + " durumu güncellendi: " + status);
+        } catch (SQLException e) {
+            System.out.println(">>> Sipariş durumu güncellenirken hata: " + e.getMessage());
+        }
+    }
+}
