@@ -1,0 +1,238 @@
+package com.btc.TaskManagement;
+
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.model.User;
+import com.btc.TaskManagement.repository.OrderRepository;
+import com.btc.TaskManagement.repository.ProductRepository;
+import com.btc.TaskManagement.repository.UserRepository;
+import com.btc.TaskManagement.repository.impl.ProductRepositoryImpl;
+import com.btc.TaskManagement.repository.impl.UserRepositoryImpl;
+import com.btc.TaskManagement.repository.impl.OrderRepositoryImpl;
+import com.btc.TaskManagement.service.ProductService;
+import com.btc.TaskManagement.service.UserService;
+import com.btc.TaskManagement.service.OrderService;
+import com.btc.TaskManagement.service.impl.OrderServiceImpl;
+import com.btc.TaskManagement.service.impl.ProductServiceImpl;
+import com.btc.TaskManagement.service.impl.UserServiceImpl;
+
+import java.math.BigDecimal;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.*;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class DepoUygulamasi3 {
+
+    private static final String URL = "jdbc:postgresql://localhost:5432/depo_db";
+    private static final String USER = "postgres";
+    private static final String PASSWORD = "123";
+
+    public static void main(String... args) throws SQLException {
+        Scanner scanner = new Scanner(System.in);
+        int value;
+
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD)) {
+
+            ProductService productService = new ProductServiceImpl(conn);
+            UserRepository userRepository = new UserRepositoryImpl(conn);
+            UserService userService = new UserServiceImpl(userRepository);
+
+            OrderRepository orderRepository = new OrderRepositoryImpl(conn);
+            OrderService orderService = new com.btc.TaskManagement.OrderServiceImpl(orderRepository) {
+                @Override
+                public void processCartOrder(int userId, List<Integer> sepetUrunleri, double sepetToplamTutar, Map<Integer, Double> urunFiyatlari) {
+
+                }
+
+                @Override
+                public List getAllOrders() {
+                    return List.of();
+                }
+
+                @Override
+                public List getOrdersByUserId(Long userId) {
+                    return List.of();
+                }
+
+                @Override
+                public void updateOrderStatus(Long orderId, String status) {
+
+                }
+            };
+
+            User authenticatedUser = null;
+            int girisHakki = 3;
+
+            // --- ŞİFRE VE KULLANICI DOĞRULAMA DÖNGÜSÜ ---
+            while (girisHakki > 0) {
+                System.out.println("Lütfen kullanıcı adınızı giriniz: ");
+                String userName = scanner.nextLine().trim();
+
+                System.out.println("Lütfen şifrenizi giriniz: ");
+                String plainPassword = scanner.nextLine().trim();
+
+                User user = userService.getUserByUsername(userName);
+
+                if (user != null && user.getPassword() != null) {
+                    String encryptedInputPassword = encryptPassword(plainPassword);
+                    String dbPassword = user.getPassword().trim();
+
+                    // Hem MD5 hashli şifreleri hem de düz metin kalan şifreleri kabul eder
+                    boolean isMd5Match = dbPassword.equalsIgnoreCase(encryptedInputPassword);
+                    boolean isPlainMatch = dbPassword.equals(plainPassword);
+
+                    if (isMd5Match || isPlainMatch) {
+                        authenticatedUser = user;
+                        System.out.println("\n>>> Giriş başarılı! Hoş geldiniz, " + userName + ".");
+                        break;
+                    }
+                }
+
+                girisHakki--;
+                System.out.println("\n>>> Hata: Kullanıcı adı veya şifre yanlış!");
+                if (girisHakki > 0) {
+                    System.out.println("Kalan giriş hakkınız: " + girisHakki + "\n");
+                }
+            }
+
+            if (authenticatedUser == null) {
+                System.out.println("\n>>> Hata: 3 defa hatalı giriş yaptınız. Program kapatılıyor!");
+                return;
+            }
+
+            // --- KATEGORİ SEÇİMİ VE ÜRÜN LİSTELEME ---
+            System.out.print("\nHangi kategorideki ürünleri listelemek istersiniz? (Örn: Tatlı): ");
+            String secilenKategori = scanner.nextLine().trim();
+
+            List<Integer> sepet = new ArrayList<>();
+
+            while (true) {
+                System.out.println("\n--- DEPO STOK DURUMU (" + secilenKategori.toUpperCase(new Locale("tr", "TR")) + ") ---");
+
+                urunleriKategoriyeGoreListele(conn, secilenKategori);
+
+                System.out.println("\n==================================================");
+                System.out.println("-> Sepete eklemek istediğiniz ürünün numarasını (ID) giriniz");
+                System.out.print("   (Sepeti Onaylamak için -2, Tamamen Çıkmak için -1 yazın): ");
+
+                try {
+                    value = Integer.parseInt(scanner.nextLine().trim());
+                } catch (NumberFormatException e) {
+                    System.out.println("\n>>> Hata: Lütfen geçerli bir sayı giriniz!");
+                    continue;
+                }
+                System.out.println("==================================================");
+
+                if (value == -1) {
+                    System.out.println("\n>>> Programdan çıkılıyor. Bizi tercih ettiğiniz için teşekkürler!");
+                    break;
+                }
+
+                // --- SEPETİ ONAYLAMA VE SATIN ALMA ADIMI ---
+                if (value == -2) {
+                    if (sepet.isEmpty()) {
+                        System.out.println("\n>>> Sepetiniz henüz boş! Önce ürün eklemelisiniz.");
+                        continue;
+                    }
+
+                    authenticatedUser = userService.getUserByUsername(authenticatedUser.getName());
+                    int currentBalance = authenticatedUser.getBalance() != null ? authenticatedUser.getBalance().intValue() : 0;
+                    System.out.println("\n>>> Mevcut Bakiyeniz: " + currentBalance + " TL");
+
+                    double toplamSepetTutarı = 0.0;
+                    List<Integer> alinanlar = new ArrayList<>();
+                    Map<Integer, Double> alinanUrunFiyatlari = new HashMap<>();
+                    int lastMoney = currentBalance;
+
+                    for (int urunId : sepet) {
+                        double urunFiyati = productService.getPriceByProductId(urunId);
+
+                        int resultMoney = productService.purchaseProduct(urunId, lastMoney, 1);
+
+                        if (resultMoney != -1) {
+                            if (urunFiyati == 0.0) {
+                                urunFiyati = lastMoney - resultMoney;
+                            }
+
+                            toplamSepetTutarı += urunFiyati;
+                            lastMoney = resultMoney;
+
+                            alinanlar.add(urunId);
+                            alinanUrunFiyatlari.put(urunId, urunFiyati);
+                        } else {
+                            System.out.println(">>> Ürün No " + urunId + " için bakiye veya stok yetersiz!");
+                        }
+                    }
+
+                    if (!alinanlar.isEmpty()) {
+                        userService.updateBalance((long) authenticatedUser.getId(), new BigDecimal(lastMoney));
+
+                        orderService.processCartOrder(Math.toIntExact(authenticatedUser.getId()), alinanlar, toplamSepetTutarı, alinanUrunFiyatlari);
+
+                        sepet.removeAll(alinanlar);
+                        System.out.println(">>> İşlem tamamlandı. Harcanan Toplam Tutar: " + toplamSepetTutarı + " TL");
+                        continue;
+                    }
+                } else {
+                    sepet.add(value);
+                    System.out.println(">>> Ürün No " + value + " sepete eklendi! (Sepetteki toplam ürün: " + sepet.size() + ")");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Veritabanı bağlantı hatası: " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("Uygulama çalışırken bir hata oluştu: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static void urunleriKategoriyeGoreListele(Connection conn, String kategori) {
+        try {
+            ProductRepository repo = new ProductRepositoryImpl(conn);
+            List<Product> productList = repo.getAllProducts();
+
+            Locale tr = new Locale("tr", "TR");
+            String arananKategori = kategori.trim().toLowerCase(tr);
+
+            List<Product> filtrelenmisUrunler = productList.stream()
+                    .filter(p -> {
+                        if (p.getCategory() == null) {
+                            return false;
+                        }
+                        String urunKategorisi = p.getCategory().getName();
+                        return urunKategorisi.contains(arananKategori) || arananKategori.contains(urunKategorisi);
+                    })
+                    .collect(Collectors.toList());
+
+            if (filtrelenmisUrunler.isEmpty()) {
+                System.out.println(">>> Bu kategoride ('" + kategori + "') kayıtlı ürün bulunamadı!");
+            } else {
+                for (Product product : filtrelenmisUrunler) {
+                    System.out.println("Ürün No: " + product.getId()
+                            + " | Adı: " + product.getName()
+                            + " | Stok: " + product.getStock()
+                            + " | Fiyat: " + product.getPrice() + " TL");
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Ürünler listelenirken hata oluştu: " + e.getMessage());
+        }
+    }
+
+    private static String encryptPassword(String password) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] hashedBytes = md.digest(password.getBytes());
+
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashedBytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Şifreleme algoritması bulunamadı!", e);
+        }
+    }
+}
