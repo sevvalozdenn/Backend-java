@@ -1,0 +1,93 @@
+package com.btc.TaskManagement.service.impl;
+
+import com.btc.TaskManagement.repository.CategoryRepository;
+import com.btc.TaskManagement.repository.CategoryRepositoryJPA;
+import com.btc.TaskManagement.repository.impl.CategoryRepositoryImpl;
+import com.btc.TaskManagement.service.CategoryService;
+import com.btc.TaskManagement.model.Category;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class CategoryServiceImpl implements CategoryService {
+
+    @Autowired
+    private CategoryRepositoryJPA categoryRepositoryJPA;
+
+    @Override
+    public List<Category> getAllCategories() {
+        List<Category> result;
+        try {
+            result = categoryRepositoryJPA.findAll();
+        } catch (Exception e) {
+            System.out.println(">>> Kategoriler getirilirken hata: " + e.getMessage());
+            result = new ArrayList<>();
+        }
+        return result;
+    }
+
+    @Override
+    public Category getCategoryById(int id) {
+        try {
+            return categoryRepositoryJPA.findById(id).orElse(null);
+        } catch (Exception e) {
+            System.out.println(">>> ID ile kategori getirme hatası: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public Category getCategoryByName(String name) {
+        try {
+            return categoryRepositoryJPA.findByNameIgnoreCase(name);
+        } catch (Exception e) {
+            System.out.println(">>> İsim ile kategori getirme hatası: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public boolean addCategory(Category category) {
+        if (category == null || category.getName() == null || category.getName().trim().isEmpty()) {
+            return false;
+        }
+        try {
+            categoryRepositoryJPA.save(category);
+            return true;
+        } catch (Exception e) {
+            System.out.println(">>> Kategori ekleme hatası: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean updateCategory(Category category) {
+        if (category == null || category.getName() == null || category.getName().trim().isEmpty()) {
+            return false;
+        }
+        try {
+            categoryRepositoryJPA.save(category);
+            return true;
+        } catch (Exception e) {
+            System.out.println(">>> Kategori güncelleme hatası: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean deleteCategory(int id) {
+        try {
+            categoryRepositoryJPA.deleteById(id);
+            return true;
+        } catch (Exception e) {
+            System.out.println(">>> Kategori silme hatası: " + e.getMessage());
+            return false;
+        }
+    }
+}
