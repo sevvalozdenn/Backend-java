@@ -1,0 +1,187 @@
+package com.btc.TaskManagement.service.impl;
+
+import com.btc.TaskManagement.model.Category;
+import com.btc.TaskManagement.model.Product;
+import com.btc.TaskManagement.repository.CategoryRepositoryJPA;
+import com.btc.TaskManagement.repository.ProductRepository;
+import com.btc.TaskManagement.repository.ProductRepositoryJPA;
+import com.btc.TaskManagement.repository.impl.ProductRepositoryImpl;
+import com.btc.TaskManagement.service.ProductService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
+
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    @Autowired
+    private ProductRepositoryJPA productRepositoryJPA;
+
+    @Autowired
+    private CategoryRepositoryJPA categoryRepositoryJPA;
+
+    @Autowired(required = false)
+    private ProductRepository productRepository;
+
+    // Default Constructor (Spring DI için gerekli)
+    public ProductServiceImpl() {}
+
+    // Parametreli Constructor (Mevcut yapıyı korumak için)
+    public ProductServiceImpl(Connection conn) {
+        this.productRepository = new ProductRepositoryImpl(conn);
+    }
+
+    // --- EKLENEN YENİ METODLAR (Ekleme / Güncelleme / Silme) ---
+
+    @Override
+    public boolean addProduct(Product product) {
+        try {
+            if (productRepositoryJPA != null) {
+                productRepositoryJPA.save(product);
+                return true;
+            } else if (productRepository != null) {
+                return productRepository.addProduct(product);
+            }
+        } catch (Exception e) {
+            System.out.println(">>> ProductServiceImpl.addProduct Hatası: " + e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean updateProduct(Product product) {
+        try {
+            if (productRepositoryJPA != null) {
+                productRepositoryJPA.save(product);
+                return true;
+            } else if (productRepository != null) {
+                return productRepository.updateProduct(product);
+            }
+        } catch (Exception e) {
+            System.out.println(">>> ProductServiceImpl.updateProduct Hatası: " + e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public void deleteProduct(int id) {
+        try {
+            if (productRepositoryJPA != null) {
+                productRepositoryJPA.deleteById(id);
+            } else if (productRepository != null) {
+                productRepository.deleteProduct(id);
+            }
+        } catch (Exception e) {
+            System.out.println(">>> ProductServiceImpl.deleteProduct Hatası: " + e.getMessage());
+        }
+    }
+
+    // --- MEVCUT DİĞER METODLARIN (DOKUNULMADI) ---
+
+    @Override
+    public void veritabaniniHazirla() {
+        // İhtiyaç yoksa boş bırakılabilir
+    }
+
+    @Override
+    public List<Product> getAllProducts() throws SQLException {
+        return productRepositoryJPA.findAll();
+    }
+
+    @Override
+    public Product getProductById(int id) throws SQLException {
+        return productRepositoryJPA.findById(id).orElse(null);
+    }
+
+    @Override
+    public void yeniStock(int id, int newStock) throws SQLException {
+        if (productRepository != null) {
+            productRepository.updateStock(id, newStock);
+        }
+    }
+
+    @Override
+    public void tatliUrunleriniVeKategorisiniOlustur() throws SQLException {
+        Category tatliKategorisi = categoryRepositoryJPA.findByNameIgnoreCase("Tatlı");
+        if (tatliKategorisi == null) {
+            tatliKategorisi = new Category();
+            tatliKategorisi.setName("Tatlı");
+            tatliKategorisi = categoryRepositoryJPA.save(tatliKategorisi);
+        }
+
+        Product halley = new Product();
+        halley.setName("Ülker Halley");
+        halley.setStock(50);
+        halley.setPrice(15.0);
+        halley.setCategory(tatliKategorisi);
+
+        Product hosbes = new Product();
+        hosbes.setName("Eti Hoşbeş");
+        hosbes.setStock(40);
+        hosbes.setPrice(18.5);
+        hosbes.setCategory(tatliKategorisi);
+
+        Product karam = new Product();
+        karam.setName("Eti Karam");
+        karam.setStock(30);
+        karam.setPrice(22.0);
+        karam.setCategory(tatliKategorisi);
+
+        productRepositoryJPA.save(halley);
+        productRepositoryJPA.save(hosbes);
+        productRepositoryJPA.save(karam);
+
+        System.out.println(">>> Başarıyla 'Tatlı' kategorisi ve ürünler oluşturuldu!");
+    }
+
+    @Override
+    public List<Product> findProductsByCategoryName(String categoryName) {
+        return productRepositoryJPA.findByCategoryName(categoryName);
+    }
+
+    @Override
+    public Double getPriceByProductId(int id) {
+        try {
+            if (productRepository != null && productRepository.getProductById(id) != null) {
+                return productRepository.getProductById(id).getPrice();
+            }
+            Product p = productRepositoryJPA.findById(id).orElse(null);
+            return p != null ? p.getPrice() : 0.0;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public int purchaseProduct(int productId, int money, int secilenUrun) throws Exception {
+        Product product = productRepositoryJPA.findById(productId).orElse(null);
+        if (product == null && productRepository != null) {
+            product = (Product) productRepository.findById((long) productId).orElse(null);
+        }
+
+        if (product == null) {
+            System.out.println(">>> Hata: Ürün bulunamamıştır.");
+            throw new Exception(">>> Hata: Ürün bulunamamıştır.");
+        }
+
+        if (product.getStock() < secilenUrun) {
+            throw new Exception(">>> Hata: " + secilenUrun + " adet ürün stokta kalmamıştır!");
+        }
+
+        int toplamMaliyet = (int) (product.getPrice() * secilenUrun);
+
+        if (money < toplamMaliyet) {
+            throw new Exception(">>> Hata: Paranız yetmiyor! Eksik: " + (toplamMaliyet - money) + " TL");
+        }
+
+        int yeniStokDurumu = product.getStock() - secilenUrun;
+        product.setStock(yeniStokDurumu);
+        productRepositoryJPA.save(product);
+
+        System.out.println(">>> BAŞARILI: satın alındı!");
+        return money - toplamMaliyet;
+    }
+}
